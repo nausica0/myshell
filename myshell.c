@@ -124,6 +124,14 @@ void process_cmd(char *cmdline)
 	}
 #else
 
+	// pipe flag가 설정되어 있으면 파이프 생성
+	if (pipe_flag) {
+		if (pipe(pipefd) == -1) {
+			fprintf(stderr,"pipe error\n");
+			return;
+		}
+	}
+
 	// redirection flag (stdout) 처리를 위한 파일 열기
 	if (rd_flag) {
 		if (!rd_filename || 
@@ -162,14 +170,6 @@ void process_cmd(char *cmdline)
 	/*
 	 * 자식 프로세스를 생성하여 프로그램을 실행한다.
 	 */
-
-	// pipe flag가 설정되어 있으면 파이프 생성
-	if (pipe_flag) {
-		if (pipe(pipefd) == -1) {
-			fprintf(stderr,"pipe error\n");
-			return;
-		}
-	}
 
 	// 자식 프로세스 생성
 	if ((pid = fork()) < 0) {
