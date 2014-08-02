@@ -124,11 +124,10 @@ void process_cmd(char *cmdline)
 	}
 #else
 
-#if 1
 	// redirection flag (stdout) 처리를 위한 파일 열기
 	if (rd_flag) {
 		if (!rd_filename || 
-			(rd_fd = creat(rd_filename, DEFAULT_FILE_MODE) < 0)) {
+			((rd_fd = creat(rd_filename, DEFAULT_FILE_MODE)) < 0)) {
 			fprintf(stderr,"redirection file creation error\n");
 			return;
 		}
@@ -143,7 +142,6 @@ void process_cmd(char *cmdline)
 		}
 		close(rd_fd);
 	}
-#endif
 
 	/* 내장 명령 처리 함수를 수행한다. */
 	if (builtin_cmd(argc, argv) == 0) {
@@ -319,21 +317,6 @@ int parse_line(char *cmdline, char **argv)
 		tok = strtok(NULL, delim);
 		targv[++targc] = tok;
 	}
-
-{
-int rd_fd;
-rd_fd = creat("xxx", DEFAULT_FILE_MODE);
-close(rd_fd);
-}
-#if 0
-	// background flag 검사
-	//if (!pipe_flag && (targc > 0) && (!strcmp(targv[targc-1], "&"))) {
-	if ((targc > 0) && (!strcmp(targv[targc-1], "&"))) {
-		targc--;
-		targv[targc] = NULL;
-		bg_flag = 1;
-	}
-#endif
 
 	// 첫번째 명령의 인자 개수 리턴
 	if (pipe_flag) {
