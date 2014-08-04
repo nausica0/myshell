@@ -665,6 +665,14 @@ int remove_directory(int argc, char **argv)
 }
 
 
+/* 
+ * copy_directory
+ *
+ * source와 destination 디렉터리를 입력 받는다.
+ * source의 각 파일에 대해 디렉터리가 아닌 경우, thread를 생성하여
+ *   destination 디렉터리에 같은 이름으로 복사한다.
+ * MAXTHREAD 만큼의 thread 만 생성하고 join하는 것을 반복한다.
+ */
 int copy_directory(int argc, char **argv)
 {
 	char *src_dirname, *dst_dirname;
