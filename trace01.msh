@@ -1,4 +1,31 @@
-echo "This is test"
 ls
 ll
+ls /boot
+ll /boot
+cp
+cp myshell.c cptest.ccc
+rm cptest.ccc
+ll
+rm nofile
+rm /boot
+pwd
+mkdir testdir
+mkdir myshell.c
+mkdir /boot/tmp
+cp myshell.c testdir/cptest.ccc
+rmdir testdir
+cd testdir
+pwd
+ll
+rm cptest.ccc
+cd ..
+rmdir testdir
+rmdir myshell.c
+rmdir /boot
+ll > rdtest.txt
+ll
+rm rdtest.txt
+cd /usr/local
+ll
+pwd
 quit

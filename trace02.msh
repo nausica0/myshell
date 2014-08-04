@@ -1,0 +1,19 @@
+/bin/ls -l
+cat bgtest.c
+vi cmdtest.c
+ll
+rm cmdtest.c
+ps -a
+top
+cat bgtest.c &
+./bgtest &
+ll
+ll | wc
+cat myshell.c | more
+echo "myshell test"
+ps -a > rdtest.txt
+ll
+more rdtest.txt
+rm rdtest.txt
+quit
+

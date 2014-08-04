@@ -1,0 +1,9 @@
+ll
+dcp . dcptest
+ll
+ll dcptest
+dcp /bin dcpbin
+ll
+ll dcpbin
+quit
+
