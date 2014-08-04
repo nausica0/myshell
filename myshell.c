@@ -133,6 +133,15 @@ void process_cmd(char *cmdline)
 			fprintf(stderr,"pipe error\n");
 			return;
 		}
+
+		// stdout fd를 저장
+		saved_stdout = dup(STDOUT_FILENO);
+
+		// 파이프 출력을 stdout으로 복제
+		if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
+			fprintf(stderr, "pipefd duplication error\n");
+			return;
+		}
 	}
 
 	// redirection flag (stdout) 처리를 위한 파일 열기
@@ -156,17 +165,21 @@ void process_cmd(char *cmdline)
 
 	/* 내장 명령 처리 함수를 수행한다. */
 	if (builtin_cmd(argc, argv) == 0) {
-		// redirection 되었던 stdout fd를 복구
-		if (rd_flag) {
-			dup2(saved_stdout, STDOUT_FILENO);
-		}
+		if (pipe_flag) {
+			pipe_flag = 2;	// 내장 명령 파이프 flag
+		} else {
+			// redirection 되었던 stdout fd를 복구
+			if (rd_flag) {
+				dup2(saved_stdout, STDOUT_FILENO);
+			}
 
-		// 종료된 background 프로세스를 wait하고 리턴한다.
-		ret = waitpid(-1, &status, WNOHANG);
-		if (ret > 0) {
-			printf("PID %d is terminated.\n", ret);
+			// 종료된 background 프로세스를 wait하고 리턴한다.
+			ret = waitpid(-1, &status, WNOHANG);
+			if (ret > 0) {
+				printf("PID %d is terminated.\n", ret);
+			}
+			return;
 		}
-		return;
 	}
 
 
@@ -184,8 +197,29 @@ void process_cmd(char *cmdline)
 	 * 자식 프로세스 (Child  process)
 	 */
 	if (pid == 0) {
+		// 내장 명령 파이프 처리를 위한 두번째 명령어 파이프 설정
+		if (pipe_flag == 2) {
+			// 부모에서 duplication 한 stdout fd를 복구
+			dup2(saved_stdout, STDOUT_FILENO);
+
+			// 파이프의 write를 닫는다.
+			close(pipefd[1]);
+
+			// 파이프 입력을 stdin으로 복제
+			if (dup2(pipefd[0], STDIN_FILENO) < 0) {
+				fprintf(stderr, "pipefd duplication error\n");
+				exit(1);
+			}
+
+			// 파이프의 두번째 프로그램 실행
+			if (execvp(pargv[0], pargv) < 0) {
+				fprintf(stderr, "%s: Command not found\n", pargv[0]);
+				exit(1);
+			}
+		}
+
 		// 파이프의 첫번째 프로그램을 위한 파이프 설정
-		if (pipe_flag) {
+		if (pipe_flag == 1) {
 			// 파이프의 read를 닫는다.
 			close(pipefd[0]);
 
@@ -207,9 +241,12 @@ void process_cmd(char *cmdline)
 	/*
 	 * 부모 프로세스 (Parent process)
 	 */
-	// pipe_flag가 설정되어 있으면, 새로운 자식 프로세스를 하나 더 
-	// 생성하여 파이프로 연결한다.
-	if (pipe_flag) {
+	// 외부 명령 pipe_flag가 설정되어 있으면, 
+	// 새로운 자식 프로세스를 하나 더 생성하여 파이프로 연결한다.
+	if (pipe_flag == 1) {
+		// 부모에서 duplication 한 stdout fd를 복구
+		dup2(saved_stdout, STDOUT_FILENO);
+
 		// 새로운 자식 프로세스 생성
 		if ((pipe_pid = fork()) < 0) {
 			fprintf(stderr, "fork error\n");
@@ -244,7 +281,7 @@ void process_cmd(char *cmdline)
 	}
 
 	// redirection 되었던 stdout fd를 복구
-	if (rd_flag) {
+	if (rd_flag || pipe_flag) {
 		dup2(saved_stdout, STDOUT_FILENO);
 	}
 
@@ -256,8 +293,8 @@ void process_cmd(char *cmdline)
 			return;
 		}
 
-		// 파이프 실행이면 두번째 자식 프로세스를 기다린다.
-		if (pipe_flag) {
+		// 외부 명령 파이프 실행이면 두번째 자식 프로세스를 기다린다.
+		if (pipe_flag == 1) {
 			ret = waitpid(pipe_pid, &status, 0);
 			if (ret < 0) {
 				fprintf(stderr, "wait error (pipe)\n");
