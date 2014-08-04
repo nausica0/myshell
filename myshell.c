@@ -32,6 +32,8 @@ const char delim[] = " \t\n";
 int bg_flag, pipe_flag, rd_flag;
 char *pargv[MAXARGS];		// argv for pipe processing
 char *rd_filename;			// filename for redirection
+char src_path[MAXTHREAD][MAXPATH];	// pathname for directory copy
+char dst_path[MAXTHREAD][MAXPATH];	// pathname for directory copy
 
 
 /* 전역 변수 선언 */
@@ -53,7 +55,8 @@ int change_directory(int argc, char **argv);
 int print_working_directory(void);
 int make_directory(int argc, char **argv);
 int remove_directory(int argc, char **argv);
-int xcopy_file(int argc, char **argv);
+int copy_directory(int argc, char **argv);
+void *dcp_thr_fn(void *thr_num);
 
 
 
@@ -390,12 +393,22 @@ int builtin_cmd(int argc, char **argv)
 		return 0;
 	}
 
+	if (!strcmp(cmd, "dcp")) {
+		copy_directory(argc, argv);
+		return 0;
+	}
+
 	// 내장 명령어가 아님.
 	return 1;
 }
 
 
-
+/*
+ * 
+ * 내장 명령 처리 함수들
+ * argc, argv를 인자로 받는다.
+ * 
+ */
 int list_files(int argc, char **argv)
 {
 	char *dirname, current_dir[] = ".";
@@ -495,6 +508,7 @@ void print_long_format(char *filename, struct stat *statbuf)
 	return;
 }
 
+
 int copy_file(int argc, char **argv)
 {
 	char *in_file, *out_file;
@@ -527,6 +541,7 @@ int copy_file(int argc, char **argv)
 	return 0;
 }
 
+
 int remove_file(int argc, char **argv)
 {
 	char *filename;
@@ -547,6 +562,7 @@ int remove_file(int argc, char **argv)
 
 	return ret;
 }
+
 
 int move_file(int argc, char **argv)
 {
@@ -569,6 +585,7 @@ int move_file(int argc, char **argv)
 	return ret;
 }
 
+
 int change_directory(int argc, char **argv)
 {
 	char *dirname;
@@ -588,6 +605,7 @@ int change_directory(int argc, char **argv)
 
 	return ret;
 }
+
 
 int print_working_directory(void)
 {
@@ -625,6 +643,7 @@ int make_directory(int argc, char **argv)
 	return ret;
 }
 
+
 int remove_directory(int argc, char **argv)
 {
 	char *dirname;
@@ -643,6 +662,144 @@ int remove_directory(int argc, char **argv)
 	}
 
 	return ret;
+}
+
+
+int copy_directory(int argc, char **argv)
+{
+	char *src_dirname, *dst_dirname;
+	DIR *dp, *tmp_dp;
+	struct dirent *d_entry;
+	struct stat statbuf;
+	pthread_t tid[MAXTHREAD];
+	int i, ret;
+
+	// 명령 인자 개수를 확인
+	if (argc != 3) {
+		fprintf(stderr, "Usage: %s <src_dir> <dst_dir>\n", argv[0]);
+		return 1;
+	}
+	src_dirname = argv[1];
+	dst_dirname = argv[2];
+
+	// source 디렉터리 열기
+	dp = opendir(src_dirname);
+	if (dp == NULL) {
+		fprintf(stderr, "directory <%s> open error\n", src_dirname);
+		return 1;
+	}
+
+	// destination 디렉터리 열기
+	tmp_dp = opendir(dst_dirname);
+	if (tmp_dp == NULL) {
+		// destination 디렉터리 생성
+		ret = mkdir(dst_dirname, DEFAULT_DIR_MODE);
+		if (ret != 0) {
+			fprintf(stderr, "directory <%s> creation error\n", dst_dirname);
+			closedir(dp);
+			return 1;
+		}
+	} else {
+		closedir(tmp_dp);
+	}
+
+	// 스레드를 생성하여 모든 파일 복사
+	i = 0;	// 스레드 번호 초기화
+	d_entry = readdir(dp);
+	while (d_entry != NULL) {
+		// 소스 파일 확인
+		sprintf(src_path[i], "%s/%s", src_dirname, d_entry->d_name);
+		if (stat(src_path[i], &statbuf)) {
+			fprintf(stderr, "file (%s) access error\n", src_path[i]);
+
+			// 다음 파일 이름 읽기
+			d_entry = readdir(dp);
+			continue;
+		}
+
+		// 디렉터리는 무시
+		if (S_ISDIR(statbuf.st_mode)) {
+			// 다음 파일 이름 읽기
+			d_entry = readdir(dp);
+			continue;
+		}
+
+		// destination 경로 이름 완성
+		sprintf(dst_path[i], "%s/%s", dst_dirname, d_entry->d_name);
+
+		// 파일 복사 스레드 생성
+		ret = pthread_create(&tid[i], NULL, dcp_thr_fn, (void *)i);
+		if (ret != 0) {
+			fprintf(stderr, "thread creation error\n");
+
+			// 다음 파일 이름 읽기
+			d_entry = readdir(dp);
+			continue;
+		}
+
+		// MAXTHREAD 이면, 종료 기다림
+		if (i == (MAXTHREAD - 1)) {
+			for (i = 0; i < MAXTHREAD; i++) {
+				ret = pthread_join(tid[i], (void *)NULL);
+				if (ret != 0) {
+					fprintf(stderr, "thread join error\n");
+				}
+			}
+			// thread 번호 초기화
+			i = 0;
+		} else {
+			// thread 번호 증가
+			i++;
+		}
+
+		// 다음 파일 이름 읽기
+		d_entry = readdir(dp);
+	}
+
+	// 마지막 스레드를 기다림
+	if (i != 0) {
+		for (i--; i >= 0; i--) {
+			ret = pthread_join(tid[i], (void *)NULL);
+			if (ret != 0) {
+				fprintf(stderr, "thread join error\n");
+			}
+		}
+	}
+
+	closedir(dp);
+
+	return 0;
+}
+
+
+void *dcp_thr_fn(void *thr_num)
+{
+	char *in_file, *out_file;
+	FILE *in, *out;	
+	int c;
+
+	printf("Thread[%d]: copy \"%s\" into \"%s\"\n", (int)thr_num, 
+			src_path[(int)thr_num], dst_path[(int)thr_num]);
+
+	in_file = src_path[(int)thr_num];
+	out_file = dst_path[(int)thr_num];
+
+	if ( (in = fopen(in_file,"r")) == NULL) {
+		fprintf(stderr,"Cannot open %s for reading\n",in_file);
+		pthread_exit(0);
+	}
+	if ( (out = fopen(out_file,"w")) == NULL) {
+		fprintf(stderr,"Cannot open %s for writing\n",out_file);
+		pthread_exit(0);
+	}
+
+	while ( (c = getc(in)) != EOF)
+		putc(c,out);
+
+	fclose(in);
+	fclose(out);
+
+	pthread_exit(0);
 }
 
 
