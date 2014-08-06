@@ -25,6 +25,8 @@
 #define DEFAULT_FILE_MODE	0664
 #define DEFAULT_DIR_MODE	0775
 
+#define BUF_SIZE	4096
+
 
 /* 전역 변수 정의 */
 char prompt[] = "myshell> ";
@@ -478,8 +480,10 @@ int list_files(int argc, char **argv)
 
 	d_entry = readdir(dp);
 	while (d_entry != NULL) {
-		// '.'으로 시작하는 파일 제외
-		if (d_entry->d_name[0] != '.') {
+		// ".", ".." 제외
+		//if (d_entry->d_name[0] != '.') {
+		if (strcmp(d_entry->d_name, ".") &&
+			strcmp(d_entry->d_name, "..")) {
 			if (lflag == 0) {	// ls 명령
 				printf("%s\n", d_entry->d_name);
 			} else {			// ll 명령
@@ -525,14 +529,14 @@ void print_long_format(char *filename, struct stat *statbuf)
 		(statbuf->st_mode & S_IXOTH) ? 'x' : '-');
 
 	// 하드 링크 개수
-	printf("%d ", statbuf->st_nlink);
+	printf("%2d ", statbuf->st_nlink);
 
 	// 사용자 id와 그룹 id
 	printf("%4d ", statbuf->st_uid);
 	printf("%4d ", statbuf->st_gid);
 
 	// 파일 크기
-	printf("%8d ", (int) statbuf->st_size);
+	printf("%10d ", (int) statbuf->st_size);
 
 	// 파일 수정 시간
 	ctime_r(&statbuf->st_mtime, timestr);
@@ -548,6 +552,7 @@ void print_long_format(char *filename, struct stat *statbuf)
 
 int copy_file(int argc, char **argv)
 {
+#if 0
 	char *in_file, *out_file;
 	FILE *in, *out;	
 	int c;
@@ -574,6 +579,64 @@ int copy_file(int argc, char **argv)
 
 	fclose(in);
 	fclose(out);
+#else
+	
+	char *in_file, *out_file;
+    int in_fd, out_fd, rd_count, wt_count;
+    char buffer[BUF_SIZE];
+ 
+	if (argc != 3) {
+		fprintf(stderr, "Usage: %s <src_file> <dst_file>\n", argv[0]);
+		return 1;
+	}
+
+	in_file = argv[1];
+	out_file = argv[2];
+ 
+	// 소스 파일을 열고, 목적 파일을 생성한다.
+	in_fd = open(in_file, O_RDONLY);
+	if (in_fd < 0) {
+		fprintf(stderr, "source file (%s) open error\n", in_file);
+		return 1;
+	}
+
+	out_fd = creat(out_file, DEFAULT_FILE_MODE);
+	if (out_fd < 0) {
+		fprintf(stderr, "destination file (%s) creation error\n", out_file);
+		return 1;
+	}
+ 
+    // 버퍼를 이용하여 소스 파일을 읽어서 목적 파일에 기록한다.
+	// 소스 파일의 끝까지 반복한다.
+	while (1) {
+		// 소스 파일에서 데이터 블록(버퍼) 읽기
+		rd_count = read(in_fd, buffer, BUF_SIZE);
+
+		// read error 혹은 파일의 끝이면 loop를 종료한다.
+		if (rd_count <= 0) {
+			break;
+		}
+
+		// 목적 파일에 데이터 쓰기
+		wt_count = write(out_fd, buffer, rd_count);
+
+		// write error이면 파일 복사 실패
+		if (wt_count <= 0) {
+			fprintf(stderr, "write error\n");
+			return 1;
+		}
+    }
+ 
+	// read error이면 파일 복사 실패
+	if (rd_count < 0) {
+		fprintf(stderr, "read error\n");
+		return 1;
+	}
+
+	// 소스와 목적 파일을 닫는다.
+    close(in_fd);
+    close(out_fd);
+#endif
 
 	return 0;
 }
@@ -715,7 +778,7 @@ int copy_directory(int argc, char **argv)
 	char *src_dirname, *dst_dirname;
 	DIR *dp, *tmp_dp;
 	struct dirent *d_entry;
-	struct stat statbuf;
+	//struct stat statbuf;
 	pthread_t tid[MAXTHREAD];
 	int i, ret;
 
@@ -754,6 +817,7 @@ int copy_directory(int argc, char **argv)
 	while (d_entry != NULL) {
 		// 소스 파일 확인
 		sprintf(src_path[i], "%s/%s", src_dirname, d_entry->d_name);
+#if 0
 		if (stat(src_path[i], &statbuf)) {
 			fprintf(stderr, "file (%s) access error\n", src_path[i]);
 
@@ -768,6 +832,14 @@ int copy_directory(int argc, char **argv)
 			d_entry = readdir(dp);
 			continue;
 		}
+#else
+		// 디렉터리는 무시
+		if (d_entry->d_type == DT_DIR) {
+			// 다음 파일 이름 읽기
+			d_entry = readdir(dp);
+			continue;
+		}
+#endif
 
 		// destination 경로 이름 완성
 		sprintf(dst_path[i], "%s/%s", dst_dirname, d_entry->d_name);
@@ -820,29 +892,58 @@ int copy_directory(int argc, char **argv)
 void *dcp_thr_fn(void *thr_num)
 {
 	char *in_file, *out_file;
-	FILE *in, *out;	
-	int c;
-
+    int in_fd, out_fd, rd_count, wt_count;
+    char buffer[BUF_SIZE];
+ 
 	printf("Thread[%d]: copy \"%s\" into \"%s\"\n", (int)thr_num, 
 			src_path[(int)thr_num], dst_path[(int)thr_num]);
 
 	in_file = src_path[(int)thr_num];
 	out_file = dst_path[(int)thr_num];
 
-	if ( (in = fopen(in_file,"r")) == NULL) {
-		fprintf(stderr,"Cannot open %s for reading\n",in_file);
-		pthread_exit(0);
-	}
-	if ( (out = fopen(out_file,"w")) == NULL) {
-		fprintf(stderr,"Cannot open %s for writing\n",out_file);
+	// 소스 파일을 열고, 목적 파일을 생성한다.
+	in_fd = open(in_file, O_RDONLY);
+	if (in_fd < 0) {
+		fprintf(stderr, "source file (%s) open error\n", in_file);
 		pthread_exit(0);
 	}
 
-	while ( (c = getc(in)) != EOF)
-		putc(c,out);
+	out_fd = creat(out_file, DEFAULT_FILE_MODE);
+	if (out_fd < 0) {
+		fprintf(stderr, "destination file (%s) creation error\n", out_file);
+		pthread_exit(0);
+	}
+ 
+    // 버퍼를 이용하여 소스 파일을 읽어서 목적 파일에 기록한다.
+	// 소스 파일의 끝까지 반복한다.
+	while (1) {
+		// 소스 파일에서 데이터 블록(버퍼) 읽기
+		rd_count = read(in_fd, buffer, BUF_SIZE);
 
-	fclose(in);
-	fclose(out);
+		// read error 혹은 파일의 끝이면 loop를 종료한다.
+		if (rd_count <= 0) {
+			break;
+		}
+
+		// 목적 파일에 데이터 쓰기
+		wt_count = write(out_fd, buffer, rd_count);
+
+		// write error이면 파일 복사 실패
+		if (wt_count <= 0) {
+			fprintf(stderr, "write error\n");
+			pthread_exit(0);
+		}
+    }
+ 
+	// read error이면 파일 복사 실패
+	if (rd_count < 0) {
+		fprintf(stderr, "read error\n");
+		pthread_exit(0);
+	}
+
+	// 소스와 목적 파일을 닫는다.
+    close(in_fd);
+    close(out_fd);
 
 	pthread_exit(0);
 }
