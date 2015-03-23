@@ -3,21 +3,27 @@ ll
 ls /boot
 ll /boot
 cp
-cp myshell.c cptest.ccc
-rm cptest.ccc
+cp myshell.c cptest.c
+cp myshell.c cptest2.c
+ll
+rm cptest2.c
 ll
 rm nofile
 rm /boot
+mv cptest.c mvtest.c
+ll
 pwd
 mkdir testdir
 mkdir myshell.c
 mkdir /boot/tmp
-cp myshell.c testdir/cptest.ccc
+cp myshell.c testdir/cptest.c
+mv mvtest.c testdir/mvtest.c
 rmdir testdir
 cd testdir
 pwd
 ll
-rm cptest.ccc
+rm cptest.c
+rm mvtest.c
 cd ..
 rmdir testdir
 rmdir myshell.c

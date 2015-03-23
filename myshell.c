@@ -13,7 +13,7 @@
 
 
 /* 컴파일 옵션 매크로 정의 */
-//#define HW_STAGE1
+#define HW_STAGE1
 
 
 /* 상수 정의 */
@@ -126,6 +126,9 @@ void process_cmd(char *cmdline)
 	int i;
 	for (i = 0; i < argc; i++) {
 		printf("argv[%d] = %s\n", i, argv[i]);
+	}
+	if ((!strcmp(argv[0], "quit") || (!strcmp(argv[0], "exit")))) {
+		exit(0);
 	}
 #else
 
