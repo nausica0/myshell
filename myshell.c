@@ -13,7 +13,7 @@
 
 
 /* 컴파일 옵션 매크로 정의 */
-#define HW_STAGE1
+//#define HW_STAGE1
 
 
 /* 상수 정의 */
@@ -113,10 +113,12 @@ void process_cmd(char *cmdline)
 	argc = parse_line(cmdline, argv);
 	if (argc == 0) {
 		// 종료된 background 프로세스를 wait하고 리턴한다.
-		ret = waitpid(-1, &status, WNOHANG);
-		if (ret > 0) {
-			printf("PID %d is terminated.\n", ret);
-		}
+		do {
+			ret = waitpid(-1, &status, WNOHANG);
+			if (ret > 0) {
+				printf("PID %d is terminated.\n", ret);
+			}
+		} while (ret > 0);
 		return;
 	}
 
@@ -179,10 +181,12 @@ void process_cmd(char *cmdline)
 			}
 
 			// 종료된 background 프로세스를 wait하고 리턴한다.
-			ret = waitpid(-1, &status, WNOHANG);
-			if (ret > 0) {
-				printf("PID %d is terminated.\n", ret);
-			}
+			do {
+				ret = waitpid(-1, &status, WNOHANG);
+				if (ret > 0) {
+					printf("PID %d is terminated.\n", ret);
+				}
+			} while (ret > 0);
 			return;
 		}
 	}
@@ -310,6 +314,14 @@ void process_cmd(char *cmdline)
 		printf("[bg] %d : %s\n", pid, cmdline);
     }
 #endif	// HW_STAGE1
+
+	// 종료된 background 프로세스를 wait하고 리턴한다.
+	do {
+		ret = waitpid(-1, &status, WNOHANG);
+		if (ret > 0) {
+			printf("PID %d is terminated.\n", ret);
+		}
+	} while (ret > 0);
 
 	return;
 }
